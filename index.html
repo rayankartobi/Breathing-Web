@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulateur Pulmonaire</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { background: #0f172a; transition: background 0.3s; }
+    html.light { background: #f5f5f5; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(to bottom, #1e293b, #0f172a);
+      min-height: 100vh;
+      overflow: hidden;
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      transition: background 0.3s;
+    }
+    body.light {
+      background: linear-gradient(to bottom, #ffffff, #f5f5f5);
+    }
+    .header {
+      text-align: center;
+      padding: 8px;
+      flex-shrink: 0;
+    }
+    .header h1 { color: white; font-size: 1.5rem; transition: color 0.3s; }
+    .header p { color: #94a3b8; font-size: 0.875rem; transition: color 0.3s; }
+    body.light .header h1 { color: #1e293b; }
+    body.light .header p { color: #64748b; }
+    .btn {
+      position: fixed;
+      z-index: 50;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 1rem;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: white;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    .btn:active { transform: scale(0.95); }
+    .btn-inhale { top: 64px; left: 8px; background: #ef4444; }
+    .btn-inhale:hover { background: #dc2626; }
+    .btn-inhale.active { background: #b91c1c; }
+    .btn-exhale { top: 64px; right: 8px; background: #3b82f6; }
+    .btn-exhale:hover { background: #2563eb; }
+    .btn-exhale.active { background: #1d4ed8; }
+    .btn-zoom { bottom: 16px; left: 50%; transform: translateX(-50%); background: #a855f7; }
+    .btn-zoom:hover { background: #9333ea; }
+    .btn-theme { bottom: 16px; right: 8px; background: #374151; padding: 12px 16px; }
+    .btn-theme:hover { background: #4b5563; }
+    body.light .btn-theme { background: #1e293b; }
+    .legend {
+      position: fixed;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(30, 41, 59, 0.9);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 0.75rem;
+      z-index: 50;
+      transition: background 0.3s;
+    }
+    body.light .legend { background: rgba(255, 255, 255, 0.95); border: 1px solid #d1d5db; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: white; transition: color 0.3s; }
+    body.light .legend-item { color: #1e293b; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .legend-dot.o2 { background: #ef4444; }
+    .legend-dot.co2 { background: #3b82f6; }
+    .legend-dot.blood { background: #7f1d1d; }
+    body.light .legend-dot.o2 { background: #dc2626; }
+    body.light .legend-dot.co2 { background: #2563eb; }
+    .svg-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .svg-container svg { width: 100%; height: 100%; max-width: 400px; }
+    .hidden { display: none; }
+    /* SVG text colors for light theme */
+    body.light .svg-text-white { fill: #1e293b; }
+    body.light .svg-text-gray { fill: #64748b; }
+    body.light .svg-title { fill: #1e293b; }
+    @media (min-width: 640px) {
+      .btn { padding: 16px 32px; }
+      .btn-inhale { left: 16px; }
+      .btn-exhale { right: 16px; }
+      .btn-theme { right: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 id="title">Simulateur Pulmonaire</h1>
+    <p id="status">Maintenez les boutons pour respirer</p>
+  </div>
+
+  <button class="btn btn-inhale" id="inhaleBtn">🫁 INSPIRER</button>
+  <button class="btn btn-exhale" id="exhaleBtn">💨 EXPIRER</button>
+  <button class="btn btn-zoom" id="zoomBtn">🔬 ZOOM → Alvéoles</button>
+  <button class="btn btn-theme" id="themeBtn">🌙</button>
+
+  <div class="legend" id="legend">
+    <div class="legend-item"><div class="legend-dot o2"></div><span>O₂ Oxygène</span></div>
+    <div class="legend-item"><div class="legend-dot co2"></div><span>CO₂ Dioxyde de carbone</span></div>
+    <div class="legend-item hidden" id="bloodLegend"><div class="legend-dot blood"></div><span>Vaisseau sanguin</span></div>
+  </div>
+
+  <div class="svg-container" id="bodyView">
+    <svg viewBox="0 0 350 600" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="skinGrad" cx="50%" cy="30%"><stop offset="0%" stop-color="#fcd5b8"/><stop offset="100%" stop-color="#d4a574"/></radialGradient>
+        <radialGradient id="lungGradL" cx="30%" cy="30%"><stop offset="0%" stop-color="#f8a0a0"/><stop offset="100%" stop-color="#d97070"/></radialGradient>
+        <radialGradient id="lungGradR" cx="70%" cy="30%"><stop offset="0%" stop-color="#f8a0a0"/><stop offset="100%" stop-color="#d97070"/></radialGradient>
+      </defs>
+      <ellipse cx="175" cy="45" rx="35" ry="40" fill="url(#skinGrad)"/>
+      <ellipse cx="163" cy="40" rx="4" ry="5" fill="#5a4a3a"/>
+      <ellipse cx="187" cy="40" rx="4" ry="5" fill="#5a4a3a"/>
+      <ellipse cx="175" cy="52" rx="4" ry="3" fill="#c99a6b"/>
+      <path d="M165 62 Q175 70 185 62" stroke="#b08060" stroke-width="2" fill="none"/>
+      <rect x="160" y="82" width="30" height="25" fill="url(#skinGrad)" rx="5"/>
+      <path d="M100 107 Q90 120 85 180 L85 350 Q90 380 120 390 L230 390 Q260 380 265 350 L265 180 Q260 120 250 107 Q220 100 175 100 Q130 100 100 107 Z" fill="url(#skinGrad)" stroke="#c99a6b" stroke-width="2"/>
+      <path d="M85 115 Q50 130 35 200 Q25 270 30 320 L45 320 Q55 270 60 210 Q70 150 100 130" fill="url(#skinGrad)" stroke="#c99a6b" stroke-width="1"/>
+      <path d="M265 115 Q300 130 315 200 Q325 270 320 320 L305 320 Q295 270 290 210 Q280 150 250 130" fill="url(#skinGrad)" stroke="#c99a6b" stroke-width="1"/>
+      <ellipse cx="37" cy="330" rx="12" ry="18" fill="url(#skinGrad)"/>
+      <ellipse cx="313" cy="330" rx="12" ry="18" fill="url(#skinGrad)"/>
+      <path d="M120 390 L110 500 Q105 550 110 590 L140 590 Q145 550 140 500 L150 390" fill="url(#skinGrad)" stroke="#c99a6b" stroke-width="1"/>
+      <path d="M200 390 L210 500 Q215 550 210 590 L240 590 Q245 550 240 500 L230 390" fill="url(#skinGrad)" stroke="#c99a6b" stroke-width="1"/>
+      <ellipse cx="175" cy="260" rx="70" ry="90" fill="#2a1a1a" opacity="0.3"/>
+      <path d="M165 230 Q155 220 160 210 Q170 200 175 215 Q180 200 190 210 Q195 220 185 230 L175 250 Z" fill="#c02040" stroke="#901030" stroke-width="1"/>
+      <path d="M175 75 L175 145" stroke="#e8b4b4" stroke-width="12" stroke-linecap="round" fill="none"/>
+      <ellipse cx="175" cy="75" rx="8" ry="5" fill="#4a3030"/>
+      <path d="M175 145 Q175 165 140 180 Q115 195 110 210" stroke="#e8b4b4" stroke-width="8" fill="none"/>
+      <path d="M175 145 Q175 165 210 180 Q235 195 240 210" stroke="#e8b4b4" stroke-width="8" fill="none"/>
+      <g id="leftLung" style="transform-origin: 125px 210px;">
+        <ellipse cx="125" cy="210" rx="45" ry="60" fill="url(#lungGradL)" stroke="#d97070" stroke-width="2"/>
+        <path d="M100 185 Q125 195 110 230" stroke="#d98080" stroke-width="1.5" fill="none" opacity="0.5"/>
+        <path d="M115 175 Q140 190 120 250" stroke="#d98080" stroke-width="1.5" fill="none" opacity="0.5"/>
+      </g>
+      <g id="rightLung" style="transform-origin: 225px 210px;">
+        <ellipse cx="225" cy="210" rx="45" ry="60" fill="url(#lungGradR)" stroke="#d97070" stroke-width="2"/>
+        <path d="M250 185 Q225 195 240 230" stroke="#d98080" stroke-width="1.5" fill="none" opacity="0.5"/>
+        <path d="M235 175 Q210 190 230 250" stroke="#d98080" stroke-width="1.5" fill="none" opacity="0.5"/>
+      </g>
+      <ellipse cx="175" cy="320" rx="35" ry="25" fill="#e8a090" stroke="#c07060" stroke-width="1"/>
+      <path d="M145 350 Q160 360 175 355 Q190 350 205 360" stroke="#d09080" stroke-width="4" fill="none" opacity="0.6"/>
+      <path d="M150 365 Q165 375 180 370 Q195 365 200 375" stroke="#d09080" stroke-width="4" fill="none" opacity="0.5"/>
+      <g id="bodyParticles"></g>
+    </svg>
+  </div>
+
+  <div class="svg-container hidden" id="alveoliView">
+    <svg viewBox="0 0 400 500" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="alvGrad" cx="50%" cy="50%"><stop offset="0%" stop-color="#ffcccc"/><stop offset="100%" stop-color="#ff9999"/></radialGradient>
+        <linearGradient id="bloodGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#8b0000"/><stop offset="100%" stop-color="#cc0000"/></linearGradient>
+        <marker id="arrowRed" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ef4444"/></marker>
+        <marker id="arrowBlue" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6"/></marker>
+      </defs>
+      <text x="200" y="30" text-anchor="middle" font-size="16" fill="white" font-weight="bold" class="svg-title">Échange Gazeux dans les Alvéoles</text>
+      <path d="M20 250 Q50 250 70 235 Q90 220 110 225" stroke="#e8b4b4" stroke-width="18" fill="none" stroke-linecap="round"/>
+      <text x="20" y="290" font-size="10" fill="#ccc">Bronchiole</text>
+      <g id="alveoliGroup">
+        <circle class="alveole" cx="135" cy="175" r="32" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="190" cy="160" r="30" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="240" cy="175" r="32" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="160" cy="220" r="30" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="215" cy="215" r="32" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="135" cy="265" r="30" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="190" cy="255" r="32" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="245" cy="250" r="30" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="160" cy="305" r="32" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="215" cy="295" r="30" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="135" cy="350" r="30" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="190" cy="340" r="32" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+        <circle class="alveole" cx="245" cy="330" r="30" fill="url(#alvGrad)" stroke="#ff6666" stroke-width="1.5"/>
+      </g>
+      <path d="M330 100 Q360 180 340 260 Q320 340 340 420" stroke="url(#bloodGrad)" stroke-width="14" fill="none" opacity="0.9"/>
+      <path d="M305 110 Q340 170 315 250 Q290 330 315 400" stroke="#aa0000" stroke-width="10" fill="none" opacity="0.7"/>
+      <path d="M280 120 Q310 180 290 250 Q270 320 290 390" stroke="#880000" stroke-width="7" fill="none" opacity="0.5"/>
+      <text x="365" y="200" font-size="9" fill="#ff6666" transform="rotate(90, 365, 200)">Capillaire sanguin</text>
+      <g opacity="0.8">
+        <path d="M245 180 L280 175" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowRed)"/>
+        <path d="M250 220 L285 215" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowRed)"/>
+        <path d="M248 260 L283 255" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowRed)"/>
+        <path d="M245 300 L280 295" stroke="#ef4444" stroke-width="2" marker-end="url(#arrowRed)"/>
+        <path d="M285 195 L250 200" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowBlue)"/>
+        <path d="M288 240 L253 245" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowBlue)"/>
+        <path d="M285 280 L250 285" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowBlue)"/>
+        <path d="M282 320 L247 325" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowBlue)"/>
+      </g>
+      <text x="190" y="255" text-anchor="middle" font-size="11" fill="white" class="svg-title">Alvéoles</text>
+      <text x="50" y="420" font-size="10" fill="#ef4444">O₂ → Sang</text>
+      <text x="50" y="440" font-size="10" fill="#3b82f6">CO₂ → Alvéoles</text>
+      <path d="M20 235 L70 235" stroke="#ffffff" stroke-width="2" stroke-dasharray="5 3" opacity="0.5"/>
+      <text x="45" y="225" font-size="9" fill="#aaa" text-anchor="middle">Air</text>
+      <text x="200" y="475" font-size="10" fill="#aaa" text-anchor="middle">Membrane alvéolo-capillaire (0.5 μm)</text>
+      <g id="alveoliParticles"></g>
+    </svg>
+  </div>
+
+  <script>
+    const state = { breathing: null, view: 'body', lungScale: 0.85, alveoliScale: 0.85, particles: [] };
+    const inhaleBtn = document.getElementById('inhaleBtn');
+    const exhaleBtn = document.getElementById('exhaleBtn');
+    const zoomBtn = document.getElementById('zoomBtn');
+    const title = document.getElementById('title');
+    const status = document.getElementById('status');
+    const bodyView = document.getElementById('bodyView');
+    const alveoliView = document.getElementById('alveoliView');
+    const leftLung = document.getElementById('leftLung');
+    const rightLung = document.getElementById('rightLung');
+    const bodyParticles = document.getElementById('bodyParticles');
+    const alveoliParticles = document.getElementById('alveoliParticles');
+    const bloodLegend = document.getElementById('bloodLegend');
+    const alveoles = document.querySelectorAll('.alveole');
+    const themeBtn = document.getElementById('themeBtn');
+
+    function toggleTheme() {
+      document.body.classList.toggle('light');
+      themeBtn.textContent = document.body.classList.contains('light') ? '🌑' : '🌙';
+    }
+    themeBtn.addEventListener('click', toggleTheme);
+
+    function startBreathing(type) { state.breathing = type; updateStatus(); }
+    function stopBreathing() { state.breathing = null; updateStatus(); }
+
+    function updateStatus() {
+      if (state.breathing === 'inhale') status.textContent = '🌬️ Inspiration O₂...';
+      else if (state.breathing === 'exhale') status.textContent = '💨 Expiration CO₂...';
+      else status.textContent = 'Maintenez les boutons pour respirer';
+      inhaleBtn.classList.toggle('active', state.breathing === 'inhale');
+      exhaleBtn.classList.toggle('active', state.breathing === 'exhale');
+    }
+
+    function toggleView() {
+      state.view = state.view === 'body' ? 'alveoli' : 'body';
+      state.particles = [];
+      bodyParticles.innerHTML = '';
+      alveoliParticles.innerHTML = '';
+      bodyView.classList.toggle('hidden', state.view !== 'body');
+      alveoliView.classList.toggle('hidden', state.view !== 'alveoli');
+      bloodLegend.classList.toggle('hidden', state.view !== 'alveoli');
+      title.textContent = state.view === 'body' ? 'Simulateur Pulmonaire' : 'Sacs Alvéolaires';
+      zoomBtn.textContent = state.view === 'body' ? '🔬 ZOOM → Alvéoles' : '🔬 RETOUR → Corps';
+    }
+
+    ['mousedown','touchstart'].forEach(e => {
+      inhaleBtn.addEventListener(e, ev => { ev.preventDefault(); startBreathing('inhale'); });
+      exhaleBtn.addEventListener(e, ev => { ev.preventDefault(); startBreathing('exhale'); });
+    });
+    ['mouseup','mouseleave','touchend'].forEach(e => {
+      inhaleBtn.addEventListener(e, ev => { ev.preventDefault(); stopBreathing(); });
+      exhaleBtn.addEventListener(e, ev => { ev.preventDefault(); stopBreathing(); });
+    });
+    zoomBtn.addEventListener('click', toggleView);
+
+    function createParticle(type, x, y, tx, ty) {
+      return { id: Date.now() + Math.random(), type, x, y, targetX: tx, targetY: ty, progress: 0 };
+    }
+
+    let lastSpawn = 0;
+    function spawnParticles(time) {
+      if (time - lastSpawn < 150 || !state.breathing) return;
+      lastSpawn = time;
+      if (state.view === 'body') {
+        if (state.breathing === 'inhale') {
+          for (let i = 0; i < 8; i++) {
+            state.particles.push(createParticle('O2', 150 + Math.random() * 50, 80, 100 + Math.random() * 40 + (Math.random() > 0.5 ? 110 : 0), 200 + Math.random() * 50));
+          }
+        } else {
+          for (let i = 0; i < 8; i++) {
+            state.particles.push(createParticle('CO2', 100 + Math.random() * 40 + (Math.random() > 0.5 ? 110 : 0), 200 + Math.random() * 50, 150 + Math.random() * 50, 60));
+          }
+        }
+      } else {
+        if (state.breathing === 'inhale') {
+          for (let i = 0; i < 12; i++) {
+            state.particles.push(createParticle('O2', 20 + Math.random() * 40, 150 + Math.random() * 200, 280 + Math.random() * 80, 150 + Math.random() * 200));
+            state.particles.push(createParticle('CO2', 280 + Math.random() * 80, 150 + Math.random() * 200, 20 + Math.random() * 40, 150 + Math.random() * 200));
+          }
+        } else {
+          for (let i = 0; i < 12; i++) {
+            state.particles.push(createParticle('CO2', 100 + Math.random() * 150, 150 + Math.random() * 200, 20 + Math.random() * 30, 150 + Math.random() * 200));
+          }
+        }
+      }
+    }
+
+    function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+    function updateParticles() {
+      state.particles = state.particles.map(p => ({ ...p, progress: Math.min(p.progress + 0.018, 1) })).filter(p => p.progress < 1);
+      const container = state.view === 'body' ? bodyParticles : alveoliParticles;
+      container.innerHTML = '';
+      state.particles.forEach(p => {
+        const t = easeInOut(p.progress);
+        const x = p.x + (p.targetX - p.x) * t;
+        const y = p.y + (p.targetY - p.y) * t;
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('cx', x); c.setAttribute('cy', y);
+        c.setAttribute('r', p.type === 'O2' ? 5 : 6);
+        c.setAttribute('fill', p.type === 'O2' ? '#ef4444' : '#3b82f6');
+        c.setAttribute('opacity', 1 - p.progress * 0.5);
+        const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        txt.setAttribute('x', x); txt.setAttribute('y', y + 3);
+        txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('font-size', '5');
+        txt.setAttribute('fill', 'white'); txt.setAttribute('font-weight', 'bold');
+        txt.textContent = p.type;
+        g.appendChild(c); g.appendChild(txt);
+        container.appendChild(g);
+      });
+    }
+
+    function updateLungs() {
+      if (state.breathing === 'inhale') {
+        state.lungScale = Math.min(state.lungScale + 0.006, 1);
+        state.alveoliScale = Math.min(state.alveoliScale + 0.006, 0.9);
+      } else if (state.breathing === 'exhale') {
+        state.lungScale = Math.max(state.lungScale - 0.006, 0.8);
+        state.alveoliScale = Math.max(state.alveoliScale - 0.006, 0.8);
+      }
+      leftLung.style.transform = `scale(${state.lungScale})`;
+      rightLung.style.transform = `scale(${state.lungScale})`;
+      alveoles.forEach(a => {
+        const cx = a.getAttribute('cx'), cy = a.getAttribute('cy');
+        a.style.transformOrigin = `${cx}px ${cy}px`;
+        a.style.transform = `scale(${state.alveoliScale})`;
+      });
+    }
+
+    function loop(time) {
+      spawnParticles(time);
+      updateParticles();
+      updateLungs();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
