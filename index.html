@@ -92,12 +92,16 @@
     body.light .svg-text-white { fill: #1e293b; }
     body.light .svg-text-gray { fill: #64748b; }
     body.light .svg-title { fill: #1e293b; }
-    @media (min-width <= 640px) {
-      .legend {display: none;}
+    @media (min-width: 640px) {
       .btn { padding: 16px 32px; }
       .btn-inhale { left: 16px; }
       .btn-exhale { right: 16px; }
       .btn-theme { right: 16px; }
+    }
+
+    /* Hide legend on small devices (phones) */
+    @media (max-width: 600px) {
+      .legend { display: none !important; }
     }
   </style>
 </head>
